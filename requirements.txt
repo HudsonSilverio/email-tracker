@@ -3,3 +3,4 @@ uvicorn[standard]
 gspread
 google-auth
 python-dotenv
+httpx

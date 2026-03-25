@@ -7,6 +7,7 @@ import traceback
 
 from dotenv import load_dotenv
 import gspread
+import httpx
 from google.oauth2.service_account import Credentials
 
 # Load environment variables from the .env file in the same folder
@@ -28,6 +29,10 @@ TRANSPARENT_PIXEL = base64.b64decode(TRANSPARENT_PIXEL_B64)
 # The Google Sheets ID comes from an environment variable
 # Example: export SHEET_ID=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
 SHEET_ID = os.getenv("SHEET_ID")
+
+# Google Analytics 4 Measurement Protocol settings
+GA4_MEASUREMENT_ID = os.getenv("GA4_MEASUREMENT_ID")
+GA4_API_SECRET = os.getenv("GA4_API_SECRET")
 
 # The scopes define what permissions we are requesting from Google
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -87,8 +92,36 @@ def test_sheets():
         return JSONResponse({"success": False, "error": str(e)})
 
 
+async def send_ga4_event(current_date: str, current_time: str, user_agent: str):
+    """Send an email_open event to Google Analytics 4 via Measurement Protocol."""
+    try:
+        url = (
+            f"https://www.google-analytics.com/mp/collect"
+            f"?measurement_id={GA4_MEASUREMENT_ID}&api_secret={GA4_API_SECRET}"
+        )
+        payload = {
+            "client_id": "email_tracker",
+            "events": [
+                {
+                    "name": "email_open",
+                    "params": {
+                        "date": current_date,
+                        "time": current_time,
+                        "user_agent": user_agent,
+                    },
+                }
+            ],
+        }
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload)
+        print(f"GA4 event sent successfully (status {response.status_code}).", flush=True)
+    except Exception as e:
+        print(f"Failed to send GA4 event: {e}", flush=True)
+        print(traceback.format_exc(), flush=True)
+
+
 @app.get("/track")
-def track(request: Request):
+async def track(request: Request):
     # Get the current date and time, split into separate values for spreadsheet columns
     now = datetime.now()
     current_date = now.strftime("%Y-%m-%d")   # e.g. 2024-03-15
@@ -115,6 +148,9 @@ def track(request: Request):
         # we log the error but DO NOT crash — the pixel image must always be returned
         print(f"Failed to save to Google Sheets: {e}", flush=True)
         print(traceback.format_exc(), flush=True)
+
+    # Send the event to Google Analytics 4
+    await send_ga4_event(current_date, current_time, user_agent)
 
     # Return the transparent 1x1 PNG so the email client renders nothing visible
     return Response(content=TRANSPARENT_PIXEL, media_type="image/png")
