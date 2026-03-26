@@ -2,7 +2,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response, JSONResponse
 from datetime import datetime
 import base64
-import json
 import os
 import traceback
 
@@ -38,16 +37,12 @@ GA4_API_SECRET = os.getenv("GA4_API_SECRET")
 # The scopes define what permissions we are requesting from Google
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# Google credentials from environment variable (for Render) or file (for local dev)
-GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
-
-
 def get_credentials():
-    """Load Google service account credentials from env var or file."""
-    if GOOGLE_CREDENTIALS:
-        info = json.loads(GOOGLE_CREDENTIALS)
-        return Credentials.from_service_account_info(info, scopes=SCOPES)
-    return Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+    """Load Google service account credentials from Secret File (Render) or local file."""
+    secret_path = "/etc/secrets/credentials.json"
+    local_path = "credentials.json"
+    path = secret_path if os.path.exists(secret_path) else local_path
+    return Credentials.from_service_account_file(path, scopes=SCOPES)
 
 
 def get_sheet():
