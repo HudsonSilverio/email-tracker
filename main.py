@@ -68,6 +68,7 @@ def startup_check():
     """Runs once when the server starts — confirms SHEET_ID and credentials are working."""
     print("=== STARTUP CHECK ===", flush=True)
     print(f"SHEET_ID loaded: {SHEET_ID}", flush=True)
+    print("GOOGLE_CREDENTIALS_B64 present:", bool(os.getenv("GOOGLE_CREDENTIALS_B64")), flush=True)
 
     # Test the connection to Google Sheets
     try:
