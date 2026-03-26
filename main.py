@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response, JSONResponse
 from datetime import datetime
 import base64
+import json
 import os
 import traceback
 
@@ -37,11 +38,21 @@ GA4_API_SECRET = os.getenv("GA4_API_SECRET")
 # The scopes define what permissions we are requesting from Google
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
+# Google credentials from environment variable (for Render) or file (for local dev)
+GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
+
+
+def get_credentials():
+    """Load Google service account credentials from env var or file."""
+    if GOOGLE_CREDENTIALS:
+        info = json.loads(GOOGLE_CREDENTIALS)
+        return Credentials.from_service_account_info(info, scopes=SCOPES)
+    return Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+
 
 def get_sheet():
     """Connect to Google Sheets and return the first worksheet."""
-    # Load the service account credentials from the local credentials.json file
-    creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+    creds = get_credentials()
 
     # Authorize the gspread client with those credentials
     client = gspread.authorize(creds)
@@ -59,7 +70,7 @@ def startup_check():
 
     # Test the connection to Google Sheets
     try:
-        creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+        creds = get_credentials()
         client = gspread.authorize(creds)
         spreadsheet = client.open_by_key(SHEET_ID)
         print(f"Connected to spreadsheet: '{spreadsheet.title}'", flush=True)
