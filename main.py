@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response, JSONResponse
 from datetime import datetime
 import base64
+import json
 import os
 import traceback
 
@@ -38,7 +39,12 @@ GA4_API_SECRET = os.getenv("GA4_API_SECRET")
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 def get_credentials():
-    """Load Google service account credentials from Secret File (Render) or local file."""
+    """Load Google service account credentials from base64 env var (Render) or local file."""
+    b64 = os.getenv("GOOGLE_CREDENTIALS_B64")
+    if b64:
+        json_data = base64.b64decode(b64).decode("utf-8")
+        info = json.loads(json_data)
+        return Credentials.from_service_account_info(info, scopes=SCOPES)
     secret_path = "/etc/secrets/credentials.json"
     local_path = "credentials.json"
     path = secret_path if os.path.exists(secret_path) else local_path
