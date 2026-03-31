@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Request
 from fastapi.responses import Response, JSONResponse
 from datetime import datetime
 import base64
@@ -67,20 +67,6 @@ def get_sheet():
     return spreadsheet.get_worksheet(0)
 
 
-def check_duplicate(sheet, email: str, current_date: str) -> bool:
-    """Check if this email already has a row for today. Returns True if duplicate found."""
-    if email == "unknown":
-        return False
-    try:
-        all_rows = sheet.get_all_values()
-        for row in all_rows:
-            # row format: [Date, Time, Email, User Agent]
-            if len(row) >= 3 and row[0] == current_date and row[2] == email:
-                return True
-    except Exception as e:
-        print(f"Dedup check failed: {e}", flush=True)
-    return False
-
 
 @app.on_event("startup")
 def startup_check():
@@ -129,7 +115,6 @@ def test_sheets():
 
 async def send_ga4_event(
     client_id: str,
-    email: str,
     current_date: str,
     current_time: str,
     user_agent: str,
@@ -152,7 +137,7 @@ async def send_ga4_event(
                 {
                     "name": "email_open",
                     "params": {
-                        "subscriber_email": email,
+                        "open_id": client_id,
                         "date": current_date,
                         "time": current_time,
                         "user_agent": user_agent,
@@ -169,39 +154,27 @@ async def send_ga4_event(
 
 
 @app.get("/track")
-async def track(
-    request: Request,
-    email: str = Query(default=None),
-    uid: str = Query(default=None),
-):
+async def track(request: Request):
     now = datetime.now()
     current_date = now.strftime("%Y-%m-%d")
     current_time = now.strftime("%H:%M:%S")
     user_agent = request.headers.get("user-agent", "Unknown")
 
-    # Determine subscriber email and GA4 client_id
-    subscriber_email = email if email else "unknown"
-    client_id = email if email else str(uuid.uuid4())
+    # Generate a unique UUID for every open
+    open_id = str(uuid.uuid4())
 
-    print(f"[{current_date} {current_time}] Email opened | email={subscriber_email} | uid={uid} | UA: {user_agent}", flush=True)
+    print(f"[{current_date} {current_time}] Email opened | id={open_id} | UA: {user_agent}", flush=True)
 
-    # --- Google Sheets: deduplication + save ---
-    is_duplicate = False
+    # --- Google Sheets: save every open ---
     try:
         sheet = get_sheet()
-        is_duplicate = check_duplicate(sheet, subscriber_email, current_date)
-
-        if is_duplicate:
-            print(f"Duplicate detected for {subscriber_email} on {current_date} — skipping.", flush=True)
-        else:
-            sheet.append_row([current_date, current_time, subscriber_email, user_agent])
-            print("Row saved to Google Sheets successfully.", flush=True)
+        sheet.append_row([current_date, current_time, open_id, user_agent])
+        print("Row saved to Google Sheets successfully.", flush=True)
     except Exception as e:
         print(f"Failed to save to Google Sheets: {e}", flush=True)
         print(traceback.format_exc(), flush=True)
 
-    # --- GA4: only send if not a duplicate ---
-    if not is_duplicate:
-        await send_ga4_event(client_id, subscriber_email, current_date, current_time, user_agent)
+    # --- GA4: send with unique client_id ---
+    await send_ga4_event(open_id, current_date, current_time, user_agent)
 
     return Response(content=TRANSPARENT_PIXEL, media_type="image/png")
